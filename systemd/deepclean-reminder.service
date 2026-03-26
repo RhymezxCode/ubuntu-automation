@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly deep clean reminder
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/rhymezxcode/deepclean-notify.sh
+TimeoutStartSec=180
+TimeoutStopSec=10

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Morning Startup
+Comment=Run daily startup maintenance script
+Exec=gnome-terminal -- bash -c 'bash ~/daily-startup.sh; echo ""; read -p "Press Enter to close..."'
+Icon=dialog-information
+Terminal=false
+Categories=Utility;
+NoDisplay=true

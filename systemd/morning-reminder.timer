@@ -1,0 +1,9 @@
+[Unit]
+Description=Remind to run morning script after login
+
+[Timer]
+OnStartupSec=60
+Unit=morning-reminder.service
+
+[Install]
+WantedBy=timers.target

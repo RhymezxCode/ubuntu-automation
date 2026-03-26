@@ -1,0 +1,10 @@
+[Unit]
+Description=Remind to run deep clean every Sunday
+
+[Timer]
+OnCalendar=Sun *-*-* 11:00:00
+Persistent=true
+Unit=deepclean-reminder.service
+
+[Install]
+WantedBy=timers.target
