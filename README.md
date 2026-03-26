@@ -156,4 +156,4 @@ Optional tools the scripts detect and use if available:
 
 ## License
 
-MIT — use it, modify it, make your machine take care of itself.
+MIT - use it, modify it, make your machine take care of itself.
