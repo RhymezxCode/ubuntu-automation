@@ -237,6 +237,23 @@ if [ "${#AS_VERSIONS[@]}" -gt 1 ]; then
         if [ "$OLD_VER" != "$LATEST" ]; then
             OLD_SIZE=$(du -sb "$OLD_VER" 2>/dev/null | awk '{print $1}')
             OLD_NAME=$(basename "$OLD_VER")
+            OLD_OPTIONS_DIR="$HOME/.config/Google/$OLD_NAME/options"
+            HAS_AI_STATE=0
+
+            # Keep Android Studio caches that likely contain AI/Codex auth/session state.
+            if [ -d "$OLD_VER/aia/codex" ] ||
+               [ -f "$OLD_OPTIONS_DIR/codex.oauth.xml" ] ||
+               [ -f "$OLD_OPTIONS_DIR/mcp_auth.xml" ] ||
+               [ -f "$OLD_OPTIONS_DIR/llm.for.code.xml" ] ||
+               [ -f "$OLD_OPTIONS_DIR/ai.providers.xml" ]; then
+                HAS_AI_STATE=1
+            fi
+
+            if [ "$HAS_AI_STATE" -eq 1 ]; then
+                echo -e "  ${YELLOW}⏭${NC}  Keeping ${OLD_NAME} (AI/Codex auth/session files detected)"
+                continue
+            fi
+
             echo -e "  ${YELLOW}Old version: ${OLD_NAME} ($(bytes_to_human $OLD_SIZE))${NC}"
             read -t 30 -p "  Delete $OLD_NAME cache? [Y/n]: " OLD_ANSWER
             OLD_ANSWER=${OLD_ANSWER:-Y}
