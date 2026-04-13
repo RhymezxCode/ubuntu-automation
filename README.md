@@ -104,12 +104,25 @@ The notifications appear automatically:
 - **Morning** — 60 seconds after login, with weather, system stats, and a motivational quote
 - **Sunday** — At 11:00 AM, with disk usage stats and cleanup reminder
 
-Click the notification button (or the notification body) to open a terminal and run the script.
+Clicking the notification body triggers **Choose Terminal and Run**.  
+For desktops where notification action callbacks are restricted, the scripts now fall back to a Zenity prompt with:
+- `Run Script`
+- `Choose Terminal and Run`
+- `Skip`
+
+GUI environment variables are refreshed from `systemctl --user show-environment` before opening chooser/terminal.  
+This avoids hardcoded display issues across Ubuntu 24.04, 26.04, and newer sessions.
 
 Set your preferred terminal once:
 
 ```bash
 ~/.local/bin/ubuntu-automation-launch-in-terminal.sh --choose-terminal
+```
+
+If chooser UI is unavailable, set it directly:
+
+```bash
+~/.local/bin/ubuntu-automation-launch-in-terminal.sh --set-terminal ptyxis
 ```
 
 ## What Each Script Does
@@ -148,9 +161,10 @@ Set your preferred terminal once:
 ## Requirements
 
 - Ubuntu 24.04+ (or any GNOME-based distro)
-- `notify-send` with `--action` support (libnotify 0.8+)
+- Notification daemon on `org.freedesktop.Notifications` (GNOME default works)
 - Any supported terminal launcher (for example: `x-terminal-emulator`, `gnome-terminal`, `ptyxis`, `kgx`, `konsole`, `xfce4-terminal`, `tilix`, `kitty`, `wezterm`, `xterm`)
 - Python 3
+- Python DBus bindings (`python3-dbus`) and GTK introspection (`python3-gi`) for action-click handling
 - `curl` (for weather in notifications)
 
 Optional tools the scripts detect and use if available:

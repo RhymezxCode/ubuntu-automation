@@ -179,10 +179,39 @@ PYEOF
 
 TITLE=$(<"$TITLE_FILE")
 BODY=$(<"$BODY_FILE")
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ubuntu-automation"
+NOTIFY_ACTIONS_MODE_FILE="$CONFIG_DIR/notify_actions_mode"
+
+hydrate_gui_env() {
+    local key value
+
+    if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+        export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+                DISPLAY|WAYLAND_DISPLAY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|XAUTHORITY|XDG_SESSION_TYPE)
+                    [ -n "$value" ] && export "$key=$value"
+                    ;;
+            esac
+        done < <(
+            systemctl --user show-environment 2>/dev/null | \
+            grep -E '^(DISPLAY|WAYLAND_DISPLAY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|XAUTHORITY|XDG_SESSION_TYPE)='
+        )
+    fi
+
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+    fi
+}
 
 launch_script_with_terminal() {
     local target_script="$1"
     local helper="$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh"
+
+    hydrate_gui_env
 
     if [ -x "$helper" ]; then
         "$helper" "$target_script" && return 0
@@ -192,13 +221,177 @@ launch_script_with_terminal() {
     return 1
 }
 
-ACTION=$(notify-send "$TITLE" "$BODY" \
-    --icon=computer \
-    --app-name="Daily Maintenance" \
-    --action="default=Open Job" \
-    --action="run=🚀 Run Morning Script" \
-    --wait)
+fallback_prompt_and_maybe_run() {
+    local target_script="$1"
+    local choice
+    local rc
 
-if [ "$ACTION" = "run" ] || [ "$ACTION" = "default" ]; then
+    hydrate_gui_env
+
+    if ! command -v zenity >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+        return 0
+    fi
+
+    choice="$(zenity --question \
+        --modal \
+        --title="Daily Maintenance" \
+        --text="Run Morning Script now?" \
+        --ok-label="Run Script" \
+        --cancel-label="Skip" \
+        --extra-button="Choose Terminal and Run" \
+        --width=420 \
+        --timeout=60 2>/dev/null)"
+    rc=$?
+
+    if [ "$choice" = "Choose Terminal and Run" ]; then
+        "$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh" --choose-terminal >/dev/null 2>&1 || true
+        launch_script_with_terminal "$target_script"
+        return 0
+    fi
+
+    if [ "$rc" -eq 0 ]; then
+        launch_script_with_terminal "$target_script"
+    fi
+}
+
+wait_for_notification_action() {
+    local title="$1"
+    local body="$2"
+    local app_name="$3"
+    local run_label="$4"
+
+    python3 - "$title" "$body" "$app_name" "$run_label" << 'PYEOF'
+import sys
+
+try:
+    import dbus
+    import dbus.mainloop.glib
+    from gi.repository import GLib
+except Exception:
+    print("unsupported")
+    raise SystemExit(0)
+
+title, body, app_name, run_label = sys.argv[1:5]
+
+try:
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+    obj = bus.get_object("org.freedesktop.Notifications", "/org/freedesktop/Notifications")
+    iface = dbus.Interface(obj, "org.freedesktop.Notifications")
+    capabilities = {str(item) for item in iface.GetCapabilities()}
+except Exception:
+    print("unsupported")
+    raise SystemExit(0)
+
+if "actions" not in capabilities:
+    print("unsupported")
+    raise SystemExit(0)
+
+loop = GLib.MainLoop()
+result = {"action": "none"}
+notification_id = {"id": None}
+close_grace_id = {"id": 0}
+
+def close_with_grace():
+    if result["action"] == "none":
+        loop.quit()
+    close_grace_id["id"] = 0
+    return False
+
+def on_action_invoked(nid, action_key):
+    if notification_id["id"] is None or int(nid) != notification_id["id"]:
+        return
+
+    action = str(action_key)
+    if action == "default":
+        result["action"] = "choose"
+    elif action in {"choose", "run"}:
+        result["action"] = action
+    else:
+        result["action"] = "none"
+    loop.quit()
+
+def on_closed(nid, _reason):
+    if notification_id["id"] is None or int(nid) != notification_id["id"]:
+        return
+    if result["action"] != "none":
+        loop.quit()
+        return
+    if close_grace_id["id"] == 0:
+        close_grace_id["id"] = GLib.timeout_add(900, close_with_grace)
+
+def on_timeout():
+    loop.quit()
+    return False
+
+bus.add_signal_receiver(
+    on_action_invoked,
+    dbus_interface="org.freedesktop.Notifications",
+    signal_name="ActionInvoked",
+)
+bus.add_signal_receiver(
+    on_closed,
+    dbus_interface="org.freedesktop.Notifications",
+    signal_name="NotificationClosed",
+)
+
+try:
+    nid = iface.Notify(
+        app_name,
+        0,
+        "computer",
+        title,
+        body,
+        [
+            "default", "Open Job",
+            "choose", "Choose Terminal and Run",
+            "run", run_label,
+        ],
+        {
+            "urgency": dbus.Byte(1),
+            "resident": dbus.Boolean(True),
+            "transient": dbus.Boolean(False),
+        },
+        45000,
+    )
+    notification_id["id"] = int(nid)
+except Exception:
+    print("unsupported")
+    raise SystemExit(0)
+
+GLib.timeout_add_seconds(45, on_timeout)
+loop.run()
+print(result["action"])
+PYEOF
+}
+
+hydrate_gui_env
+ACTION="$(wait_for_notification_action "$TITLE" "$BODY" "Daily Maintenance" "Run Morning Script" 2>/dev/null)"
+[ -n "$ACTION" ] || ACTION="unsupported"
+
+if [ "$ACTION" = "unsupported" ]; then
+    mkdir -p "$CONFIG_DIR"
+    printf '%s\n' "disabled" > "$NOTIFY_ACTIONS_MODE_FILE"
+    notify-send "$TITLE" "$BODY" --icon=computer --app-name="Daily Maintenance"
+    fallback_prompt_and_maybe_run "$HOME/daily-startup.sh"
+    exit 0
+fi
+
+if [ "$ACTION" = "choose" ]; then
+    "$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh" --choose-terminal >/dev/null 2>&1 || true
     launch_script_with_terminal "$HOME/daily-startup.sh"
+    exit 0
+fi
+
+if [ "$ACTION" = "run" ]; then
+    launch_script_with_terminal "$HOME/daily-startup.sh"
+    exit 0
+fi
+
+if [ "$ACTION" = "none" ]; then
+    fallback_prompt_and_maybe_run "$HOME/daily-startup.sh"
 fi
