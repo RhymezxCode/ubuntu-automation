@@ -17,7 +17,7 @@ echo "  ╚═══════════════════════
 echo -e "${NC}"
 
 # 1. Copy scripts
-echo -e "${BOLD}[1/5] Installing scripts to ~/...${NC}"
+echo -e "${BOLD}[1/5] Installing scripts to ~/ and ~/.local/bin...${NC}"
 for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepclean-notify.sh; do
     if [ -f "$HOME_DIR/$script" ]; then
         echo -e "  ${YELLOW}~/$script already exists. Overwrite? [y/N]:${NC} "
@@ -31,6 +31,12 @@ for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepc
     chmod +x "$HOME_DIR/$script"
     echo -e "  ${GREEN}✓${NC} $script"
 done
+
+mkdir -p "$HOME_DIR/.local/bin"
+cp "$SCRIPT_DIR/scripts/ubuntu-automation-launch-in-terminal.sh" \
+   "$HOME_DIR/.local/bin/ubuntu-automation-launch-in-terminal.sh"
+chmod +x "$HOME_DIR/.local/bin/ubuntu-automation-launch-in-terminal.sh"
+echo -e "  ${GREEN}✓${NC} ~/.local/bin/ubuntu-automation-launch-in-terminal.sh"
 
 # 2. Add aliases
 echo ""
@@ -98,6 +104,13 @@ for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepc
     fi
 done
 
+if [ -x "$HOME_DIR/.local/bin/ubuntu-automation-launch-in-terminal.sh" ]; then
+    echo -e "  ${GREEN}✓${NC} ~/.local/bin/ubuntu-automation-launch-in-terminal.sh"
+else
+    echo -e "  ${RED}✗${NC} ~/.local/bin/ubuntu-automation-launch-in-terminal.sh"
+    ALL_OK=0
+fi
+
 for timer in morning-reminder.timer deepclean-reminder.timer; do
     STATUS=$(systemctl --user is-active "$timer" 2>/dev/null)
     if [ "$STATUS" = "active" ]; then
@@ -115,10 +128,20 @@ else
     ALL_OK=0
 fi
 
-if command -v x-terminal-emulator &>/dev/null || \
-   command -v gnome-terminal &>/dev/null || \
-   command -v ptyxis &>/dev/null || \
-   command -v kgx &>/dev/null; then
+has_supported_terminal() {
+    local terminal
+    for terminal in \
+        x-terminal-emulator gnome-terminal ptyxis kgx gnome-console \
+        konsole xfce4-terminal mate-terminal tilix alacritty kitty \
+        wezterm terminator lxterminal urxvt xterm; do
+        if command -v "$terminal" &>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+if has_supported_terminal; then
     echo -e "  ${GREEN}✓${NC} compatible terminal launcher found"
 else
     echo -e "  ${RED}✗${NC} no compatible terminal launcher found"
@@ -138,4 +161,5 @@ echo -e "    ${BOLD}morning${NC}     — daily maintenance"
 echo -e "    ${BOLD}deepclean${NC}   — weekly deep clean"
 echo -e "    ${BOLD}pcaudit${NC}     — full system audit"
 echo -e "    ${BOLD}autorun${NC}     — run all three"
+echo -e "    ${BOLD}~/.local/bin/ubuntu-automation-launch-in-terminal.sh --choose-terminal${NC} — choose terminal app"
 echo ""

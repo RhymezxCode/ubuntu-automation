@@ -13,7 +13,8 @@ ubuntu-automation/
 │   ├── deep-clean.sh           # Weekly deep disk cleanup
 │   ├── pc-audit.sh             # Full hardware/software/security audit
 │   ├── morning-notify.sh       # Morning notification with weather & stats
-│   └── deepclean-notify.sh     # Sunday cleanup reminder notification
+│   ├── deepclean-notify.sh     # Sunday cleanup reminder notification
+│   └── ubuntu-automation-launch-in-terminal.sh  # Terminal chooser/launcher
 ├── systemd/
 │   ├── morning-reminder.timer  # Fires 60s after login
 │   ├── morning-reminder.service
@@ -37,12 +38,17 @@ chmod +x install.sh
 
 ## Manual Install
 
-### 1. Copy scripts to home directory
+### 1. Copy scripts to home directory and launcher to `~/.local/bin`
 
 ```bash
-cp scripts/*.sh ~/
+cp scripts/daily-startup.sh scripts/deep-clean.sh scripts/pc-audit.sh ~/
+cp scripts/morning-notify.sh scripts/deepclean-notify.sh ~/
 chmod +x ~/daily-startup.sh ~/deep-clean.sh ~/pc-audit.sh
 chmod +x ~/morning-notify.sh ~/deepclean-notify.sh
+
+mkdir -p ~/.local/bin
+cp scripts/ubuntu-automation-launch-in-terminal.sh ~/.local/bin/
+chmod +x ~/.local/bin/ubuntu-automation-launch-in-terminal.sh
 ```
 
 ### 2. Add aliases to `~/.bashrc`
@@ -98,7 +104,13 @@ The notifications appear automatically:
 - **Morning** — 60 seconds after login, with weather, system stats, and a motivational quote
 - **Sunday** — At 11:00 AM, with disk usage stats and cleanup reminder
 
-Click the notification button to open a terminal and run the script.
+Click the notification button (or the notification body) to open a terminal and run the script.
+
+Set your preferred terminal once:
+
+```bash
+~/.local/bin/ubuntu-automation-launch-in-terminal.sh --choose-terminal
+```
 
 ## What Each Script Does
 
@@ -137,7 +149,7 @@ Click the notification button to open a terminal and run the script.
 
 - Ubuntu 24.04+ (or any GNOME-based distro)
 - `notify-send` with `--action` support (libnotify 0.8+)
-- A terminal launcher (`x-terminal-emulator`, `gnome-terminal`, `ptyxis`, or `kgx`)
+- Any supported terminal launcher (for example: `x-terminal-emulator`, `gnome-terminal`, `ptyxis`, `kgx`, `konsole`, `xfce4-terminal`, `tilix`, `kitty`, `wezterm`, `xterm`)
 - Python 3
 - `curl` (for weather in notifications)
 
@@ -146,6 +158,7 @@ Optional tools the scripts detect and use if available:
 - `upower` (battery details)
 - `fwupdmgr` (firmware updates)
 - `dmidecode` (hardware details in audit)
+- `zenity` (for GUI terminal picker; CLI fallback is included)
 
 ## Customization
 
