@@ -2,7 +2,7 @@
 
 Automated daily maintenance, weekly deep cleaning, and full system auditing for Ubuntu — with GNOME desktop notifications, systemd timers, and one-word bash aliases.
 
-Built for my ThinkPad X1 Carbon 6th Gen running Ubuntu 24.04, but works on any GNOME-based Ubuntu setup.
+Built for my ThinkPad X1 Carbon 6th Gen running Ubuntu 24.04, with terminal-launch compatibility updates for newer Ubuntu releases (including 26.04).
 
 ## What's Inside
 
@@ -137,7 +137,7 @@ Click the notification button to open a terminal and run the script.
 
 - Ubuntu 24.04+ (or any GNOME-based distro)
 - `notify-send` with `--action` support (libnotify 0.8+)
-- `gnome-terminal`
+- A terminal launcher (`x-terminal-emulator`, `gnome-terminal`, `ptyxis`, or `kgx`)
 - Python 3
 - `curl` (for weather in notifications)
 

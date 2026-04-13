@@ -4,7 +4,9 @@ After=graphical-session.target
 Wants=graphical-session.target
 
 [Service]
-Type=simple
+Type=oneshot
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+Environment=XDG_RUNTIME_DIR=%t
 ExecStart=/home/rhymezxcode/deepclean-notify.sh
 TimeoutStartSec=180
 TimeoutStopSec=10

@@ -116,6 +116,31 @@ PYEOF
 TITLE=$(<"$TITLE_FILE")
 BODY=$(<"$BODY_FILE")
 
+open_terminal_for_script() {
+    local target_script="$1"
+    local run_cmd
+    run_cmd="bash \"$target_script\"; echo \"\"; read -r -p \"Press Enter to close...\""
+
+    if command -v x-terminal-emulator >/dev/null 2>&1; then
+        x-terminal-emulator -e bash -lc "$run_cmd" && return 0
+    fi
+
+    if command -v gnome-terminal >/dev/null 2>&1; then
+        gnome-terminal -- bash -lc "$run_cmd" && return 0
+    fi
+
+    if command -v ptyxis >/dev/null 2>&1; then
+        ptyxis --standalone -- bash -lc "$run_cmd" && return 0
+    fi
+
+    if command -v kgx >/dev/null 2>&1; then
+        kgx -- bash -lc "$run_cmd" && return 0
+    fi
+
+    notify-send "Ubuntu Automation" "Could not open a terminal. Install gnome-terminal or configure x-terminal-emulator."
+    return 1
+}
+
 ACTION=$(notify-send "$TITLE" "$BODY" \
     --icon=computer \
     --app-name="Weekly Maintenance" \
@@ -123,5 +148,5 @@ ACTION=$(notify-send "$TITLE" "$BODY" \
     --wait)
 
 if [ "$ACTION" = "run" ]; then
-    gnome-terminal -- bash -c 'bash ~/deep-clean.sh; echo ""; read -p "Press Enter to close..."'
+    open_terminal_for_script "$HOME/deep-clean.sh"
 fi

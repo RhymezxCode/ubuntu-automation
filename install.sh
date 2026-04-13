@@ -115,6 +115,16 @@ else
     ALL_OK=0
 fi
 
+if command -v x-terminal-emulator &>/dev/null || \
+   command -v gnome-terminal &>/dev/null || \
+   command -v ptyxis &>/dev/null || \
+   command -v kgx &>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} compatible terminal launcher found"
+else
+    echo -e "  ${RED}✗${NC} no compatible terminal launcher found"
+    ALL_OK=0
+fi
+
 echo ""
 if [ "$ALL_OK" -eq 1 ]; then
     echo -e "${GREEN}${BOLD}  Installation complete!${NC}"

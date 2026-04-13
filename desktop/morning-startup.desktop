@@ -2,7 +2,7 @@
 Type=Application
 Name=Morning Startup
 Comment=Run daily startup maintenance script
-Exec=gnome-terminal -- bash -c 'bash ~/daily-startup.sh; echo ""; read -p "Press Enter to close..."'
+Exec=bash -lc "if command -v x-terminal-emulator >/dev/null 2>&1; then x-terminal-emulator -e bash -lc 'bash \"/home/rhymezxcode/daily-startup.sh\"; echo \"\"; read -r -p \"Press Enter to close...\"'; elif command -v gnome-terminal >/dev/null 2>&1; then gnome-terminal -- bash -lc 'bash \"/home/rhymezxcode/daily-startup.sh\"; echo \"\"; read -r -p \"Press Enter to close...\"'; elif command -v ptyxis >/dev/null 2>&1; then ptyxis --standalone -- bash -lc 'bash \"/home/rhymezxcode/daily-startup.sh\"; echo \"\"; read -r -p \"Press Enter to close...\"'; elif command -v kgx >/dev/null 2>&1; then kgx -- bash -lc 'bash \"/home/rhymezxcode/daily-startup.sh\"; echo \"\"; read -r -p \"Press Enter to close...\"'; else notify-send 'Ubuntu Automation' 'Could not open a terminal. Install gnome-terminal or configure x-terminal-emulator.'; fi"
 Icon=dialog-information
 Terminal=false
 Categories=Utility;
