@@ -94,7 +94,7 @@ check_internet() {
 echo -e "${BOLD}"
 echo "  ╔══════════════════════════════════════════════╗"
 echo "  ║         DAILY STARTUP MAINTENANCE            ║"
-echo "  ║    ThinkPad X1 Carbon 6th · Ubuntu 24.04     ║"
+echo "  ║    ThinkPad X1 Carbon 6th · Ubuntu 26.04     ║"
 echo "  ╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 echo -e "  $(date '+%A, %B %d %Y · %I:%M %p')"

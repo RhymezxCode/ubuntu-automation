@@ -69,10 +69,11 @@ list_available_terminals() {
     local -a candidates=(
         "${UBUNTU_AUTOMATION_TERMINAL:-}"
         x-terminal-emulator
-        gnome-terminal
         ptyxis
+        gnome-terminal
         kgx
         gnome-console
+        ghostty
         konsole
         xfce4-terminal
         mate-terminal
@@ -149,7 +150,8 @@ run_in_terminal() {
     case "$key" in
         x-terminal-emulator) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         gnome-terminal) launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
-        ptyxis) launch_detached "$terminal" --standalone -- bash -lc "$run_cmd" ;;
+        ptyxis) launch_detached "$terminal" -- bash -lc "$run_cmd" || \
+                launch_detached "$terminal" -s -- bash -lc "$run_cmd" ;;
         kgx|gnome-console) launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
         konsole) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         xfce4-terminal|terminator) launch_detached "$terminal" -x bash -lc "$run_cmd" ;;
@@ -158,8 +160,8 @@ run_in_terminal() {
         alacritty|xterm|urxvt|lxterminal) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         kitty) launch_detached "$terminal" bash -lc "$run_cmd" ;;
         ghostty)
-            launch_detached "$terminal" -e bash -lc "$run_cmd" || \
-            launch_detached "$terminal" --gtk-single-instance=false -e bash -lc "$run_cmd"
+            launch_detached "$terminal" --gtk-single-instance=false -- bash -lc "$run_cmd" || \
+            launch_detached "$terminal" -- bash -lc "$run_cmd"
             ;;
         wezterm) launch_detached "$terminal" start -- bash -lc "$run_cmd" ;;
         *) launch_detached "$terminal" -e bash -lc "$run_cmd" || launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
