@@ -150,8 +150,8 @@ run_in_terminal() {
     case "$key" in
         x-terminal-emulator) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         gnome-terminal) launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
-        ptyxis) launch_detached "$terminal" --new-window -- bash -lc "$run_cmd" || \
-                launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
+        ptyxis) launch_detached "$terminal" -- bash -lc "$run_cmd" || \
+                launch_detached "$terminal" -s -- bash -lc "$run_cmd" ;;
         kgx|gnome-console) launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
         konsole) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         xfce4-terminal|terminator) launch_detached "$terminal" -x bash -lc "$run_cmd" ;;

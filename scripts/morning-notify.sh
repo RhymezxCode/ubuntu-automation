@@ -267,7 +267,7 @@ wait_for_notification_action() {
     local target="$6"
 
     python3 - "$title" "$body" "$app_name" "$run_label" "$helper" "$target" << 'PYEOF'
-import sys, subprocess
+import sys, subprocess, threading, time
 
 try:
     import dbus
@@ -299,26 +299,55 @@ loop = GLib.MainLoop()
 result = {"action": "none"}
 notification_id = {"id": None}
 close_grace_id = {"id": 0}
+_last_launch = {"t": 0.0}
+
+ACTIONS = [
+    "run", run_label,
+    "choose", "Choose Terminal and Run",
+]
+HINTS = {
+    "urgency": dbus.Byte(1),
+    "resident": dbus.Boolean(True),
+    "transient": dbus.Boolean(False),
+}
+
+def _send():
+    return int(iface.Notify(app_name, 0, "computer", title, body, ACTIONS, HINTS, 45000))
+
+def _resend():
+    try:
+        notification_id["id"] = _send()
+        result["action"] = "none"
+    except Exception:
+        loop.quit()
+    return False
 
 def _launch(action):
-    """Spawn the terminal launcher detached; keep the loop alive for more clicks."""
-    if not helper or not target:
+    now = time.monotonic()
+    if now - _last_launch["t"] < 2.0:
         return
-    try:
-        if action == "choose":
+    _last_launch["t"] = now
+    result["action"] = "launched"
+
+    def _run():
+        try:
+            if action == "choose":
+                proc = subprocess.run(
+                    [helper, "--choose-terminal"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=60,
+                )
+                if proc.returncode != 0:
+                    return  # user cancelled terminal picker — do not launch
             subprocess.Popen(
-                [helper, "--choose-terminal"],
+                [helper, target],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-        subprocess.Popen(
-            [helper, target],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except Exception:
-        pass
-    result["action"] = "launched"
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
 
 def close_with_grace():
     loop.quit()
@@ -328,16 +357,13 @@ def close_with_grace():
 def on_action_invoked(nid, action_key):
     if notification_id["id"] is None or int(nid) != notification_id["id"]:
         return
-
     action = str(action_key)
+    # "default" = notification body click → treat as direct run
     if action == "default":
-        action = "choose"
-
+        action = "run"
     if action in {"choose", "run"}:
         _launch(action)
-        # Keep the loop alive — user can click again
-        return
-
+        return  # keep loop alive for more clicks
     result["action"] = "none"
     loop.quit()
 
@@ -345,7 +371,8 @@ def on_closed(nid, _reason):
     if notification_id["id"] is None or int(nid) != notification_id["id"]:
         return
     if result["action"] == "launched":
-        loop.quit()
+        # GNOME dismissed notification after action despite resident=True — re-send
+        GLib.idle_add(_resend)
         return
     if close_grace_id["id"] == 0:
         close_grace_id["id"] = GLib.timeout_add(900, close_with_grace)
@@ -354,37 +381,13 @@ def on_timeout():
     loop.quit()
     return False
 
-bus.add_signal_receiver(
-    on_action_invoked,
-    dbus_interface="org.freedesktop.Notifications",
-    signal_name="ActionInvoked",
-)
-bus.add_signal_receiver(
-    on_closed,
-    dbus_interface="org.freedesktop.Notifications",
-    signal_name="NotificationClosed",
-)
+bus.add_signal_receiver(on_action_invoked,
+    dbus_interface="org.freedesktop.Notifications", signal_name="ActionInvoked")
+bus.add_signal_receiver(on_closed,
+    dbus_interface="org.freedesktop.Notifications", signal_name="NotificationClosed")
 
 try:
-    nid = iface.Notify(
-        app_name,
-        0,
-        "computer",
-        title,
-        body,
-        [
-            "default", "Open Job",
-            "choose", "Choose Terminal and Run",
-            "run", run_label,
-        ],
-        {
-            "urgency": dbus.Byte(1),
-            "resident": dbus.Boolean(True),
-            "transient": dbus.Boolean(False),
-        },
-        45000,
-    )
-    notification_id["id"] = int(nid)
+    notification_id["id"] = _send()
 except Exception:
     print("unsupported")
     raise SystemExit(0)
