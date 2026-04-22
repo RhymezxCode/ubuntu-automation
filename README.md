@@ -201,9 +201,40 @@ Other terminal management commands:
 - Runs automatically via systemd 5 minutes after boot, then every 6 hours
 - Silent when everything is healthy — no noise unless action is needed
 
+## Compatibility
+
+| Ubuntu Version | Status | Default Terminal |
+|----------------|--------|-----------------|
+| 26.04 (Resolute) | ✅ Fully supported | ptyxis |
+| 24.04 (Noble) | ✅ Fully supported | gnome-terminal |
+| 22.04 (Jammy) | ✅ Fully supported | gnome-terminal |
+| 20.04 (Focal) | ✅ Fully supported | gnome-terminal |
+
+| Feature | 20.04+ | 24.04+ | 26.04 |
+|---------|--------|--------|-------|
+| Notification buttons | ✅ | ✅ | ✅ |
+| Terminal auto-detect | ✅ | ✅ | ✅ |
+| ptyxis support | ❌ not installed | ❌ not installed | ✅ default |
+| systemd user timers | ✅ | ✅ | ✅ |
+| zsh aliases | ✅ | ✅ | ✅ |
+
+The terminal is auto-detected on every version — no manual config needed. On 26.04, ptyxis is picked first; on older versions, gnome-terminal is used. You can always override with:
+
+```bash
+~/.local/bin/ubuntu-automation-launch-in-terminal.sh --set-terminal <name>
+```
+
+On older Ubuntu versions, ensure these dependencies are installed:
+
+```bash
+sudo apt install python3-dbus python3-gi zenity libnotify-bin
+```
+
+If `python3-dbus` or `python3-gi` are missing, notification action buttons fall back to a zenity dialog automatically — nothing breaks.
+
 ## Requirements
 
-- Ubuntu 24.04+ (tested on 24.04 and 26.04 / GNOME 48)
+- Ubuntu 20.04+ (tested on 20.04, 22.04, 24.04, and 26.04)
 - Notification daemon on `org.freedesktop.Notifications` (GNOME default)
 - Python 3
 - `python3-dbus` and `python3-gi` — for notification action button handling
