@@ -150,8 +150,8 @@ run_in_terminal() {
     case "$key" in
         x-terminal-emulator) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         gnome-terminal) launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
-        ptyxis) launch_detached "$terminal" -- bash -lc "$run_cmd" || \
-                launch_detached "$terminal" -s -- bash -lc "$run_cmd" ;;
+        ptyxis) launch_detached "$terminal" --new-window -- bash -lc "$run_cmd" || \
+                launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
         kgx|gnome-console) launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
         konsole) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         xfce4-terminal|terminator) launch_detached "$terminal" -x bash -lc "$run_cmd" ;;
@@ -160,8 +160,8 @@ run_in_terminal() {
         alacritty|xterm|urxvt|lxterminal) launch_detached "$terminal" -e bash -lc "$run_cmd" ;;
         kitty) launch_detached "$terminal" bash -lc "$run_cmd" ;;
         ghostty)
-            launch_detached "$terminal" --gtk-single-instance=false -- bash -lc "$run_cmd" || \
-            launch_detached "$terminal" -- bash -lc "$run_cmd"
+            launch_detached "$terminal" --gtk-single-instance=false -e bash -lc "$run_cmd" || \
+            launch_detached "$terminal" -e bash -lc "$run_cmd"
             ;;
         wezterm) launch_detached "$terminal" start -- bash -lc "$run_cmd" ;;
         *) launch_detached "$terminal" -e bash -lc "$run_cmd" || launch_detached "$terminal" -- bash -lc "$run_cmd" ;;
@@ -244,7 +244,21 @@ print_usage() {
     echo "  $0 --current-terminal"
 }
 
-mapfile -t AVAILABLE_TERMINALS < <(list_available_terminals)
+# Skip slow desktop-file scan when a valid saved preference exists and
+# no terminal-management flag is requested (the common fast path).
+_FAST_PATH=0
+_ARG1="${1:-}"
+if [[ "$_ARG1" != --list-terminals && "$_ARG1" != --choose-terminal && \
+      "$_ARG1" != --set-terminal && "$_ARG1" != --current-terminal ]]; then
+    _SAVED="$(load_terminal_preference)"
+    if [ -n "$_SAVED" ] && is_command_available "$_SAVED"; then
+        AVAILABLE_TERMINALS=("$_SAVED")
+        _FAST_PATH=1
+    fi
+fi
+if [ "$_FAST_PATH" -eq 0 ]; then
+    mapfile -t AVAILABLE_TERMINALS < <(list_available_terminals)
+fi
 hydrate_gui_env
 
 if [ "${1:-}" = "--list-terminals" ]; then
