@@ -199,9 +199,11 @@ wait_for_notification_action() {
     local body="$2"
     local app_name="$3"
     local run_label="$4"
+    local helper="$5"
+    local target="$6"
 
-    python3 - "$title" "$body" "$app_name" "$run_label" << 'PYEOF'
-import sys
+    python3 - "$title" "$body" "$app_name" "$run_label" "$helper" "$target" << 'PYEOF'
+import sys, subprocess
 
 try:
     import dbus
@@ -212,6 +214,8 @@ except Exception:
     raise SystemExit(0)
 
 title, body, app_name, run_label = sys.argv[1:5]
+helper = sys.argv[5] if len(sys.argv) > 5 else ""
+target = sys.argv[6] if len(sys.argv) > 6 else ""
 
 try:
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -232,9 +236,28 @@ result = {"action": "none"}
 notification_id = {"id": None}
 close_grace_id = {"id": 0}
 
+def _launch(action):
+    """Spawn the terminal launcher detached; keep the loop alive for more clicks."""
+    if not helper or not target:
+        return
+    try:
+        if action == "choose":
+            subprocess.Popen(
+                [helper, "--choose-terminal"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        subprocess.Popen(
+            [helper, target],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        pass
+    result["action"] = "launched"
+
 def close_with_grace():
-    if result["action"] == "none":
-        loop.quit()
+    loop.quit()
     close_grace_id["id"] = 0
     return False
 
@@ -244,17 +267,20 @@ def on_action_invoked(nid, action_key):
 
     action = str(action_key)
     if action == "default":
-        result["action"] = "choose"
-    elif action in {"choose", "run"}:
-        result["action"] = action
-    else:
-        result["action"] = "none"
+        action = "choose"
+
+    if action in {"choose", "run"}:
+        _launch(action)
+        # Keep the loop alive — user can click again
+        return
+
+    result["action"] = "none"
     loop.quit()
 
 def on_closed(nid, _reason):
     if notification_id["id"] is None or int(nid) != notification_id["id"]:
         return
-    if result["action"] != "none":
+    if result["action"] == "launched":
         loop.quit()
         return
     if close_grace_id["id"] == 0:
@@ -305,29 +331,28 @@ print(result["action"])
 PYEOF
 }
 
+HELPER="$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh"
+TARGET="$HOME/deep-clean.sh"
+
 hydrate_gui_env
-ACTION="$(wait_for_notification_action "$TITLE" "$BODY" "Weekly Maintenance" "Run Deep Clean" 2>/dev/null)"
+ACTION="$(wait_for_notification_action "$TITLE" "$BODY" "Weekly Maintenance" "Run Deep Clean" \
+    "$HELPER" "$TARGET" 2>/dev/null)"
 [ -n "$ACTION" ] || ACTION="unsupported"
 
 if [ "$ACTION" = "unsupported" ]; then
     mkdir -p "$CONFIG_DIR"
     printf '%s\n' "disabled" > "$NOTIFY_ACTIONS_MODE_FILE"
     notify-send "$TITLE" "$BODY" --icon=computer --app-name="Weekly Maintenance"
-    fallback_prompt_and_maybe_run "$HOME/deep-clean.sh"
+    fallback_prompt_and_maybe_run "$TARGET"
     exit 0
 fi
 
-if [ "$ACTION" = "choose" ]; then
-    "$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh" --choose-terminal >/dev/null 2>&1 || true
-    launch_script_with_terminal "$HOME/deep-clean.sh"
+# "launched" = user clicked run/choose one or more times; terminals are already open
+if [ "$ACTION" = "launched" ]; then
     exit 0
 fi
 
-if [ "$ACTION" = "run" ]; then
-    launch_script_with_terminal "$HOME/deep-clean.sh"
-    exit 0
-fi
-
+# "none" = notification dismissed without any action
 if [ "$ACTION" = "none" ]; then
-    fallback_prompt_and_maybe_run "$HOME/deep-clean.sh"
+    fallback_prompt_and_maybe_run "$TARGET"
 fi
