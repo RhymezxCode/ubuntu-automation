@@ -18,7 +18,7 @@ echo -e "${NC}"
 
 # 1. Copy scripts
 echo -e "${BOLD}[1/5] Installing scripts to ~/ and ~/.local/bin...${NC}"
-for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepclean-notify.sh; do
+for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepclean-notify.sh system-alert.sh; do
     if [ -f "$HOME_DIR/$script" ]; then
         echo -e "  ${YELLOW}~/$script already exists. Overwrite? [y/N]:${NC} "
         read -r answer
@@ -40,24 +40,29 @@ echo -e "  ${GREEN}✓${NC} ~/.local/bin/ubuntu-automation-launch-in-terminal.sh
 
 # 2. Add aliases
 echo ""
-echo -e "${BOLD}[2/5] Setting up bash aliases...${NC}"
-ALIASES_EXIST=0
-if grep -q 'alias morning=' "$HOME_DIR/.bashrc" 2>/dev/null; then
-    ALIASES_EXIST=1
-fi
+echo -e "${BOLD}[2/5] Setting up shell aliases...${NC}"
 
-if [ "$ALIASES_EXIST" -eq 1 ]; then
-    echo -e "  ${YELLOW}Aliases already exist in ~/.bashrc. Skipping.${NC}"
-else
-    cat >> "$HOME_DIR/.bashrc" << 'EOF'
-
+_ALIAS_BLOCK='
 # Ubuntu Automation aliases
 alias morning="bash ~/daily-startup.sh"
 alias deepclean="bash ~/deep-clean.sh"
 alias pcaudit="bash ~/pc-audit.sh"
-alias autorun="bash ~/daily-startup.sh && bash ~/deep-clean.sh && bash ~/pc-audit.sh"
-EOF
-    echo -e "  ${GREEN}✓${NC} Added aliases: morning, deepclean, pcaudit, autorun"
+alias autorun="bash ~/daily-startup.sh && bash ~/deep-clean.sh && bash ~/pc-audit.sh"'
+
+if grep -q 'alias morning=' "$HOME_DIR/.bashrc" 2>/dev/null; then
+    echo -e "  ${YELLOW}Aliases already exist in ~/.bashrc. Skipping.${NC}"
+else
+    printf '%s\n' "$_ALIAS_BLOCK" >> "$HOME_DIR/.bashrc"
+    echo -e "  ${GREEN}✓${NC} Added aliases to ~/.bashrc"
+fi
+
+if [ -f "$HOME_DIR/.zshrc" ]; then
+    if grep -q 'alias morning=' "$HOME_DIR/.zshrc" 2>/dev/null; then
+        echo -e "  ${YELLOW}Aliases already exist in ~/.zshrc. Skipping.${NC}"
+    else
+        printf '%s\n' "$_ALIAS_BLOCK" >> "$HOME_DIR/.zshrc"
+        echo -e "  ${GREEN}✓${NC} Added aliases to ~/.zshrc"
+    fi
 fi
 
 # 3. Install systemd timers
@@ -75,9 +80,15 @@ sed "s|/home/rhymezxcode/|${HOME_DIR}/|g" "$SCRIPT_DIR/systemd/deepclean-reminde
 cp "$SCRIPT_DIR/systemd/deepclean-reminder.timer" "$HOME_DIR/.config/systemd/user/"
 echo -e "  ${GREEN}✓${NC} deepclean-reminder (timer + service)"
 
+sed "s|/home/rhymezxcode/|${HOME_DIR}/|g" "$SCRIPT_DIR/systemd/system-alert.service" \
+    > "$HOME_DIR/.config/systemd/user/system-alert.service"
+cp "$SCRIPT_DIR/systemd/system-alert.timer" "$HOME_DIR/.config/systemd/user/"
+echo -e "  ${GREEN}✓${NC} system-alert (timer + service)"
+
 systemctl --user daemon-reload
 systemctl --user enable --now morning-reminder.timer 2>/dev/null
 systemctl --user enable --now deepclean-reminder.timer 2>/dev/null
+systemctl --user enable --now system-alert.timer 2>/dev/null
 echo -e "  ${GREEN}✓${NC} Timers enabled and started"
 
 # 4. Install desktop entry
@@ -95,7 +106,7 @@ echo -e "${BOLD}[5/5] Verifying installation...${NC}"
 echo ""
 
 ALL_OK=1
-for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepclean-notify.sh; do
+for script in daily-startup.sh deep-clean.sh pc-audit.sh morning-notify.sh deepclean-notify.sh system-alert.sh; do
     if [ -x "$HOME_DIR/$script" ]; then
         echo -e "  ${GREEN}✓${NC} ~/$script"
     else

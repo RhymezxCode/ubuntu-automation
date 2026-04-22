@@ -1,0 +1,12 @@
+[Unit]
+Description=System health alert (disk + battery)
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=oneshot
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+Environment=XDG_RUNTIME_DIR=%t
+ExecStart=/home/rhymezxcode/system-alert.sh
+TimeoutStartSec=30
+TimeoutStopSec=10

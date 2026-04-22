@@ -485,3 +485,12 @@ if [ -n "$REBOOT_REQUIRED" ]; then
 fi
 
 echo ""
+
+# Post-run summary notification
+if command -v notify-send &>/dev/null; then
+    _DISK_FREE=$(df -h / --output=avail | tail -1 | tr -d ' ')
+    _REBOOT_NOTE=""
+    [ -n "$REBOOT_REQUIRED" ] && _REBOOT_NOTE=" · Reboot needed"
+    notify-send "✅  Morning Done" "System ready · ${_DISK_FREE} free${_REBOOT_NOTE}" \
+        --icon=computer --app-name="Daily Maintenance" --expire-time=8000 2>/dev/null || true
+fi

@@ -235,7 +235,7 @@ loop = GLib.MainLoop()
 result = {"action": "dismissed"}
 notification_id = {"id": None}
 
-ACTIONS = ["run", run_label, "choose", "Choose Terminal and Run"]
+ACTIONS = ["run", run_label, "choose", "Choose Terminal and Run", "snooze", "Snooze 1h"]
 HINTS = {
     "urgency": dbus.Byte(1),
     "resident": dbus.Boolean(True),
@@ -248,13 +248,13 @@ def on_action_invoked(nid, action_key):
     action = str(action_key)
     if action == "default":
         action = "run"
-    result["action"] = action if action in {"choose", "run"} else "dismissed"
+    result["action"] = action if action in {"choose", "run", "snooze"} else "dismissed"
     loop.quit()
 
 def on_closed(nid, _reason):
     if notification_id["id"] is None or int(nid) != notification_id["id"]:
         return
-    if result["action"] in {"run", "choose"}:
+    if result["action"] in {"run", "choose", "snooze"}:
         return  # on_action_invoked already handled this; loop is quitting
     result["action"] = "dismissed"
     loop.quit()
@@ -303,6 +303,11 @@ while true; do
             if "$HELPER" --choose-terminal >/dev/null 2>&1; then
                 "$HELPER" "$TARGET" &
             fi
+            ;;
+        snooze)
+            # Re-fire this notification after 1 hour
+            ( sleep 3600 && bash "$0" ) &
+            break
             ;;
         unsupported)
             mkdir -p "$CONFIG_DIR"

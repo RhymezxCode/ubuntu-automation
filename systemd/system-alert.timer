@@ -1,0 +1,11 @@
+[Unit]
+Description=Check system health every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=system-alert.service
+
+[Install]
+WantedBy=timers.target

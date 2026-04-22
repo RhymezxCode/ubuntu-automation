@@ -11,8 +11,13 @@ NC='\033[0m'
 
 TIMEOUT_SECS=30
 
+DRY_RUN=0
+for _arg in "$@"; do
+    case "$_arg" in --dry-run|-n) DRY_RUN=1 ;; esac
+done
+
 # Cache sudo credentials upfront so password prompt doesn't collide with spinners
-sudo -v 2>/dev/null
+[ "$DRY_RUN" -eq 0 ] && sudo -v 2>/dev/null
 
 divider() {
     echo ""
@@ -106,6 +111,7 @@ echo -e "${NC}"
 DISK_BEFORE=$(df / --output=used | tail -1 | tr -d ' ')
 echo -e "  Disk used before: $(df -h / --output=used | tail -1 | tr -d ' ')"
 echo -e "  ${DIM}$(date '+%A, %B %d %Y · %I:%M %p')${NC}"
+[ "$DRY_RUN" -eq 1 ] && echo -e "\n  ${YELLOW}${BOLD}⚠  DRY RUN — showing what would be cleaned, no changes made${NC}"
 
 # ─────────────────────────────────────────────────
 # 1. STOP ALL BUILD DAEMONS
@@ -168,20 +174,24 @@ done
 if [ "$PROJECT_TOTAL" -gt 0 ]; then
     echo ""
     echo -e "  Total cleanable: ${YELLOW}$(bytes_to_human $PROJECT_TOTAL)${NC}"
-    read -t 30 -p "  Clean all project build caches? [Y/n]: " PROJ_ANSWER
-    PROJ_ANSWER=${PROJ_ANSWER:-Y}
-    if [[ "$PROJ_ANSWER" =~ ^[Yy]$ ]]; then
-        for DIR in ~/StudioProjects/personal/*/ ~/StudioProjects/work/*/; do
-            [ ! -d "$DIR" ] && continue
-            rm -rf "$DIR/build" "$DIR/.gradle" "$DIR/app/build" 2>/dev/null
-            for MODULE in "$DIR"/*/build; do
-                rm -rf "$MODULE" 2>/dev/null
-            done
-        done
-        TOTAL_FREED=$((TOTAL_FREED + PROJECT_TOTAL))
-        echo -e "  ${GREEN}✓${NC} Project caches cleaned ($(bytes_to_human $PROJECT_TOTAL))"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "  ${DIM}[dry-run] Would clean $(bytes_to_human $PROJECT_TOTAL) of project build caches${NC}"
     else
-        echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        read -t 30 -p "  Clean all project build caches? [Y/n]: " PROJ_ANSWER
+        PROJ_ANSWER=${PROJ_ANSWER:-Y}
+        if [[ "$PROJ_ANSWER" =~ ^[Yy]$ ]]; then
+            for DIR in ~/StudioProjects/personal/*/ ~/StudioProjects/work/*/; do
+                [ ! -d "$DIR" ] && continue
+                rm -rf "$DIR/build" "$DIR/.gradle" "$DIR/app/build" 2>/dev/null
+                for MODULE in "$DIR"/*/build; do
+                    rm -rf "$MODULE" 2>/dev/null
+                done
+            done
+            TOTAL_FREED=$((TOTAL_FREED + PROJECT_TOTAL))
+            echo -e "  ${GREEN}✓${NC} Project caches cleaned ($(bytes_to_human $PROJECT_TOTAL))"
+        else
+            echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        fi
     fi
 else
     echo -e "  ${GREEN}✓${NC} Project caches are clean"
@@ -206,17 +216,21 @@ echo -e "    ${BOLD}Total:         $(bytes_to_human $GRADLE_TOTAL)${NC}"
 
 if [ "$GRADLE_TOTAL" -gt 52428800 ]; then
     echo ""
-    read -t 30 -p "  Clean Gradle global caches? [Y/n]: " GC_ANSWER
-    GC_ANSWER=${GC_ANSWER:-Y}
-    if [[ "$GC_ANSWER" =~ ^[Yy]$ ]]; then
-        rm -rf ~/.gradle/caches/build-cache-* 2>/dev/null
-        rm -rf ~/.gradle/caches/transforms-* 2>/dev/null
-        rm -rf ~/.gradle/daemon/*/daemon-*.out.log 2>/dev/null
-        rm -rf ~/.gradle/caches/journal-* 2>/dev/null
-        TOTAL_FREED=$((TOTAL_FREED + GRADLE_TOTAL))
-        echo -e "  ${GREEN}✓${NC} Gradle global cache cleaned ($(bytes_to_human $GRADLE_TOTAL))"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "  ${DIM}[dry-run] Would clean $(bytes_to_human $GRADLE_TOTAL) of Gradle caches${NC}"
     else
-        echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        read -t 30 -p "  Clean Gradle global caches? [Y/n]: " GC_ANSWER
+        GC_ANSWER=${GC_ANSWER:-Y}
+        if [[ "$GC_ANSWER" =~ ^[Yy]$ ]]; then
+            rm -rf ~/.gradle/caches/build-cache-* 2>/dev/null
+            rm -rf ~/.gradle/caches/transforms-* 2>/dev/null
+            rm -rf ~/.gradle/daemon/*/daemon-*.out.log 2>/dev/null
+            rm -rf ~/.gradle/caches/journal-* 2>/dev/null
+            TOTAL_FREED=$((TOTAL_FREED + GRADLE_TOTAL))
+            echo -e "  ${GREEN}✓${NC} Gradle global cache cleaned ($(bytes_to_human $GRADLE_TOTAL))"
+        else
+            echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        fi
     fi
 else
     echo -e "  ${GREEN}✓${NC} Gradle cache is small"
@@ -255,14 +269,18 @@ if [ "${#AS_VERSIONS[@]}" -gt 1 ]; then
             fi
 
             echo -e "  ${YELLOW}Old version: ${OLD_NAME} ($(bytes_to_human $OLD_SIZE))${NC}"
-            read -t 30 -p "  Delete $OLD_NAME cache? [Y/n]: " OLD_ANSWER
-            OLD_ANSWER=${OLD_ANSWER:-Y}
-            if [[ "$OLD_ANSWER" =~ ^[Yy]$ ]]; then
-                rm -rf "$OLD_VER"
-                TOTAL_FREED=$((TOTAL_FREED + OLD_SIZE))
-                echo -e "  ${GREEN}✓${NC} ${OLD_NAME} cache deleted ($(bytes_to_human $OLD_SIZE))"
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo -e "  ${DIM}[dry-run] Would delete ${OLD_NAME} cache ($(bytes_to_human $OLD_SIZE))${NC}"
             else
-                echo -e "  ${YELLOW}⏭${NC}  Skipped"
+                read -t 30 -p "  Delete $OLD_NAME cache? [Y/n]: " OLD_ANSWER
+                OLD_ANSWER=${OLD_ANSWER:-Y}
+                if [[ "$OLD_ANSWER" =~ ^[Yy]$ ]]; then
+                    rm -rf "$OLD_VER"
+                    TOTAL_FREED=$((TOTAL_FREED + OLD_SIZE))
+                    echo -e "  ${GREEN}✓${NC} ${OLD_NAME} cache deleted ($(bytes_to_human $OLD_SIZE))"
+                else
+                    echo -e "  ${YELLOW}⏭${NC}  Skipped"
+                fi
             fi
         fi
     done
@@ -272,9 +290,13 @@ fi
 
 AS_LOG_SIZE=$(du -sb ~/.cache/Google/AndroidStudio*/log/ 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
 if [ "$AS_LOG_SIZE" -gt 52428800 ]; then
-    rm -rf ~/.cache/Google/AndroidStudio*/log/*.log.* 2>/dev/null
-    TOTAL_FREED=$((TOTAL_FREED + AS_LOG_SIZE))
-    echo -e "  ${GREEN}✓${NC} AS log files cleaned ($(bytes_to_human $AS_LOG_SIZE))"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "  ${DIM}[dry-run] Would clean AS log files ($(bytes_to_human $AS_LOG_SIZE))${NC}"
+    else
+        rm -rf ~/.cache/Google/AndroidStudio*/log/*.log.* 2>/dev/null
+        TOTAL_FREED=$((TOTAL_FREED + AS_LOG_SIZE))
+        echo -e "  ${GREEN}✓${NC} AS log files cleaned ($(bytes_to_human $AS_LOG_SIZE))"
+    fi
 else
     echo -e "  ${GREEN}✓${NC} AS logs are small ($(bytes_to_human $AS_LOG_SIZE))"
 fi
@@ -286,21 +308,33 @@ divider
 echo -e "${BOLD} 5. SYSTEM CLEANUP${NC}"
 echo ""
 
-if run_with_timeout "$TIMEOUT_SECS" "Cleaning APT cache..." sudo apt autoremove -y -qq; then
-    echo -e "  ${GREEN}✓${NC} APT autoremove done"
-fi
-if run_with_timeout "$TIMEOUT_SECS" "Cleaning APT package cache..." sudo apt clean -qq; then
-    echo -e "  ${GREEN}✓${NC} APT cache cleaned"
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo -e "  ${DIM}[dry-run] Would run: apt autoremove, apt clean${NC}"
+else
+    if run_with_timeout "$TIMEOUT_SECS" "Cleaning APT cache..." sudo apt autoremove -y -qq; then
+        echo -e "  ${GREEN}✓${NC} APT autoremove done"
+    fi
+    if run_with_timeout "$TIMEOUT_SECS" "Cleaning APT package cache..." sudo apt clean -qq; then
+        echo -e "  ${GREEN}✓${NC} APT cache cleaned"
+    fi
 fi
 
-sudo journalctl --vacuum-time=3d --vacuum-size=100M 2>&1 | grep -oE "freed.*|Vacuuming.*" | head -2 | sed 's/^/  /'
-echo -e "  ${GREEN}✓${NC} Journal logs trimmed"
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo -e "  ${DIM}[dry-run] Would vacuum journal logs${NC}"
+else
+    sudo journalctl --vacuum-time=3d --vacuum-size=100M 2>&1 | grep -oE "freed.*|Vacuuming.*" | head -2 | sed 's/^/  /'
+    echo -e "  ${GREEN}✓${NC} Journal logs trimmed"
+fi
 
 THUMB_SIZE=$(du -sb ~/.cache/thumbnails/ 2>/dev/null | awk '{print $1+0}')
 if [ "$THUMB_SIZE" -gt 52428800 ]; then
-    rm -rf ~/.cache/thumbnails/*
-    TOTAL_FREED=$((TOTAL_FREED + THUMB_SIZE))
-    echo -e "  ${GREEN}✓${NC} Thumbnail cache cleaned ($(bytes_to_human $THUMB_SIZE))"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "  ${DIM}[dry-run] Would clean thumbnail cache ($(bytes_to_human $THUMB_SIZE))${NC}"
+    else
+        rm -rf ~/.cache/thumbnails/*
+        TOTAL_FREED=$((TOTAL_FREED + THUMB_SIZE))
+        echo -e "  ${GREEN}✓${NC} Thumbnail cache cleaned ($(bytes_to_human $THUMB_SIZE))"
+    fi
 else
     echo -e "  ${GREEN}✓${NC} Thumbnails OK ($(bytes_to_human $THUMB_SIZE))"
 fi
@@ -308,36 +342,48 @@ fi
 TRASH_SIZE=$(du -sb ~/.local/share/Trash/ 2>/dev/null | awk '{print $1+0}')
 if [ "$TRASH_SIZE" -gt 1048576 ]; then
     echo -e "  ${YELLOW}Trash: $(bytes_to_human $TRASH_SIZE)${NC}"
-    read -t 30 -p "  Empty trash? [Y/n]: " TRASH_ANSWER
-    TRASH_ANSWER=${TRASH_ANSWER:-Y}
-    if [[ "$TRASH_ANSWER" =~ ^[Yy]$ ]]; then
-        rm -rf ~/.local/share/Trash/*
-        TOTAL_FREED=$((TOTAL_FREED + TRASH_SIZE))
-        echo -e "  ${GREEN}✓${NC} Trash emptied ($(bytes_to_human $TRASH_SIZE))"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "  ${DIM}[dry-run] Would empty trash ($(bytes_to_human $TRASH_SIZE))${NC}"
     else
-        echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        read -t 30 -p "  Empty trash? [Y/n]: " TRASH_ANSWER
+        TRASH_ANSWER=${TRASH_ANSWER:-Y}
+        if [[ "$TRASH_ANSWER" =~ ^[Yy]$ ]]; then
+            rm -rf ~/.local/share/Trash/*
+            TOTAL_FREED=$((TOTAL_FREED + TRASH_SIZE))
+            echo -e "  ${GREEN}✓${NC} Trash emptied ($(bytes_to_human $TRASH_SIZE))"
+        else
+            echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        fi
     fi
 else
     echo -e "  ${GREEN}✓${NC} Trash is empty"
 fi
 
-find /tmp -maxdepth 1 -user "$(whoami)" -mtime +3 -exec rm -rf {} + 2>/dev/null
-echo -e "  ${GREEN}✓${NC} Old temp files cleaned"
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo -e "  ${DIM}[dry-run] Would clean old temp files in /tmp${NC}"
+else
+    find /tmp -maxdepth 1 -user "$(whoami)" -mtime +3 -exec rm -rf {} + 2>/dev/null
+    echo -e "  ${GREEN}✓${NC} Old temp files cleaned"
+fi
 
 SNAP_OLD=$(snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}')
 if [ -n "$SNAP_OLD" ]; then
     SNAP_COUNT=$(echo "$SNAP_OLD" | wc -l)
     echo -e "  ${YELLOW}${SNAP_COUNT} old snap revisions found${NC}"
-    read -t 30 -p "  Remove old snap revisions? [Y/n]: " SNAP_OLD_ANSWER
-    SNAP_OLD_ANSWER=${SNAP_OLD_ANSWER:-Y}
-    if [[ "$SNAP_OLD_ANSWER" =~ ^[Yy]$ ]]; then
-        echo "$SNAP_OLD" | while read NAME REV; do
-            echo -e "  ${DIM}  Removing ${NAME} rev ${REV}...${NC}"
-            sudo snap remove "$NAME" --revision="$REV" 2>/dev/null
-        done
-        echo -e "  ${GREEN}✓${NC} Old snap revisions removed"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "  ${DIM}[dry-run] Would remove ${SNAP_COUNT} old snap revision(s)${NC}"
     else
-        echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        read -t 30 -p "  Remove old snap revisions? [Y/n]: " SNAP_OLD_ANSWER
+        SNAP_OLD_ANSWER=${SNAP_OLD_ANSWER:-Y}
+        if [[ "$SNAP_OLD_ANSWER" =~ ^[Yy]$ ]]; then
+            echo "$SNAP_OLD" | while read NAME REV; do
+                echo -e "  ${DIM}  Removing ${NAME} rev ${REV}...${NC}"
+                sudo snap remove "$NAME" --revision="$REV" 2>/dev/null
+            done
+            echo -e "  ${GREEN}✓${NC} Old snap revisions removed"
+        else
+            echo -e "  ${YELLOW}⏭${NC}  Skipped"
+        fi
     fi
 else
     echo -e "  ${GREEN}✓${NC} No old snap revisions"
@@ -379,11 +425,14 @@ divider
 echo -e "${BOLD} FINAL APT CLEANUP${NC}"
 echo ""
 
-sudo apt-get autoremove -y -qq 2>/dev/null
-echo -e "  ${GREEN}✓${NC} apt-get autoremove done"
-
-sudo apt-get autoclean -qq 2>/dev/null
-echo -e "  ${GREEN}✓${NC} apt-get autoclean done"
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo -e "  ${DIM}[dry-run] Would run: apt-get autoremove, apt-get autoclean${NC}"
+else
+    sudo apt-get autoremove -y -qq 2>/dev/null
+    echo -e "  ${GREEN}✓${NC} apt-get autoremove done"
+    sudo apt-get autoclean -qq 2>/dev/null
+    echo -e "  ${GREEN}✓${NC} apt-get autoclean done"
+fi
 
 # ─────────────────────────────────────────────────
 # SUMMARY
@@ -393,11 +442,26 @@ echo ""
 
 DISK_AFTER=$(df / --output=used | tail -1 | tr -d ' ')
 ACTUAL_FREED=$(( (DISK_BEFORE - DISK_AFTER) * 1024 ))
-if [ "$ACTUAL_FREED" -gt 0 ]; then
+if [ "$DRY_RUN" -eq 1 ]; then
+    echo -e "  ${YELLOW}${BOLD}Dry run complete — no changes made.${NC}"
+    echo -e "  Disk unchanged: $(df -h / --output=used,avail,pcent | tail -1 | awk '{print $1 " used, " $2 " free (" $3 ")"}')"
+elif [ "$ACTUAL_FREED" -gt 0 ]; then
     echo -e "  ${GREEN}${BOLD}Freed $(bytes_to_human $ACTUAL_FREED) of disk space!${NC}"
+    echo -e "  Disk now: $(df -h / --output=used,avail,pcent | tail -1 | awk '{print $1 " used, " $2 " free (" $3 ")"}')"
 else
     echo -e "  ${GREEN}${BOLD}System is clean!${NC}"
+    echo -e "  Disk now: $(df -h / --output=used,avail,pcent | tail -1 | awk '{print $1 " used, " $2 " free (" $3 ")"}')"
 fi
-
-echo -e "  Disk now: $(df -h / --output=used,avail,pcent | tail -1 | awk '{print $1 " used, " $2 " free (" $3 ")"}')"
 echo ""
+
+# Post-run summary notification (skip in dry-run)
+if [ "$DRY_RUN" -eq 0 ] && command -v notify-send &>/dev/null; then
+    _DISK_FREE=$(df -h / --output=avail | tail -1 | tr -d ' ')
+    if [ "$ACTUAL_FREED" -gt 0 ]; then
+        _MSG="Freed $(bytes_to_human $ACTUAL_FREED) · ${_DISK_FREE} free on disk"
+    else
+        _MSG="System is clean · ${_DISK_FREE} free on disk"
+    fi
+    notify-send "✅  Deep Clean Done" "$_MSG" \
+        --icon=computer --app-name="Weekly Maintenance" --expire-time=8000 2>/dev/null || true
+fi
