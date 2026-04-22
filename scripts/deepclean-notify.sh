@@ -199,23 +199,23 @@ wait_for_notification_action() {
     local body="$2"
     local app_name="$3"
     local run_label="$4"
-    local helper="$5"
-    local target="$6"
+    local prev_nid="${5:-0}"
 
-    python3 - "$title" "$body" "$app_name" "$run_label" "$helper" "$target" << 'PYEOF'
-import sys, subprocess, threading, time
+    # Sends/replaces the notification and waits for exactly ONE action or close.
+    # Prints "action:nid" — e.g. "run:42", "choose:42", "dismissed:42", "unsupported:0"
+    python3 - "$title" "$body" "$app_name" "$run_label" "$prev_nid" << 'PYEOF'
+import sys
 
 try:
     import dbus
     import dbus.mainloop.glib
     from gi.repository import GLib
 except Exception:
-    print("unsupported")
+    print("unsupported:0")
     raise SystemExit(0)
 
 title, body, app_name, run_label = sys.argv[1:5]
-helper = sys.argv[5] if len(sys.argv) > 5 else ""
-target = sys.argv[6] if len(sys.argv) > 6 else ""
+prev_nid = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5].isdigit() else 0
 
 try:
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -224,96 +224,43 @@ try:
     iface = dbus.Interface(obj, "org.freedesktop.Notifications")
     capabilities = {str(item) for item in iface.GetCapabilities()}
 except Exception:
-    print("unsupported")
+    print("unsupported:0")
     raise SystemExit(0)
 
 if "actions" not in capabilities:
-    print("unsupported")
+    print("unsupported:0")
     raise SystemExit(0)
 
 loop = GLib.MainLoop()
-result = {"action": "none"}
+result = {"action": "dismissed"}
 notification_id = {"id": None}
-close_grace_id = {"id": 0}
-_last_launch = {"t": 0.0}
 
-ACTIONS = [
-    "run", run_label,
-    "choose", "Choose Terminal and Run",
-]
+ACTIONS = ["run", run_label, "choose", "Choose Terminal and Run"]
 HINTS = {
     "urgency": dbus.Byte(1),
     "resident": dbus.Boolean(True),
     "transient": dbus.Boolean(False),
 }
 
-def _send():
-    return int(iface.Notify(app_name, 0, "computer", title, body, ACTIONS, HINTS, 45000))
-
-def _resend():
-    try:
-        notification_id["id"] = _send()
-        result["action"] = "none"
-    except Exception:
-        loop.quit()
-    return False
-
-def _launch(action):
-    now = time.monotonic()
-    if now - _last_launch["t"] < 2.0:
-        return
-    _last_launch["t"] = now
-    result["action"] = "launched"
-
-    def _run():
-        try:
-            if action == "choose":
-                proc = subprocess.run(
-                    [helper, "--choose-terminal"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=60,
-                )
-                if proc.returncode != 0:
-                    return  # user cancelled terminal picker — do not launch
-            subprocess.Popen(
-                [helper, target],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except Exception:
-            pass
-
-    threading.Thread(target=_run, daemon=True).start()
-
-def close_with_grace():
-    loop.quit()
-    close_grace_id["id"] = 0
-    return False
-
 def on_action_invoked(nid, action_key):
     if notification_id["id"] is None or int(nid) != notification_id["id"]:
         return
     action = str(action_key)
-    # "default" = notification body click → treat as direct run
     if action == "default":
         action = "run"
-    if action in {"choose", "run"}:
-        _launch(action)
-        return  # keep loop alive for more clicks
-    result["action"] = "none"
+    result["action"] = action if action in {"choose", "run"} else "dismissed"
     loop.quit()
 
 def on_closed(nid, _reason):
     if notification_id["id"] is None or int(nid) != notification_id["id"]:
         return
-    if result["action"] == "launched":
-        # GNOME dismissed notification after action despite resident=True — re-send
-        GLib.idle_add(_resend)
-        return
-    if close_grace_id["id"] == 0:
-        close_grace_id["id"] = GLib.timeout_add(900, close_with_grace)
+    if result["action"] in {"run", "choose"}:
+        return  # on_action_invoked already handled this; loop is quitting
+    result["action"] = "dismissed"
+    loop.quit()
 
 def on_timeout():
+    result["action"] = "timeout"
     loop.quit()
     return False
 
@@ -323,14 +270,15 @@ bus.add_signal_receiver(on_closed,
     dbus_interface="org.freedesktop.Notifications", signal_name="NotificationClosed")
 
 try:
-    notification_id["id"] = _send()
+    nid = int(iface.Notify(app_name, prev_nid, "computer", title, body, ACTIONS, HINTS, 45000))
+    notification_id["id"] = nid
 except Exception:
-    print("unsupported")
+    print("unsupported:0")
     raise SystemExit(0)
 
 GLib.timeout_add_seconds(45, on_timeout)
 loop.run()
-print(result["action"])
+print(f"{result['action']}:{notification_id['id'] or 0}")
 PYEOF
 }
 
@@ -338,24 +286,34 @@ HELPER="$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh"
 TARGET="$HOME/deep-clean.sh"
 
 hydrate_gui_env
-ACTION="$(wait_for_notification_action "$TITLE" "$BODY" "Weekly Maintenance" "Run Deep Clean" \
-    "$HELPER" "$TARGET" 2>/dev/null)"
-[ -n "$ACTION" ] || ACTION="unsupported"
+PREV_NID=0
+while true; do
+    _RESULT="$(wait_for_notification_action "$TITLE" "$BODY" "Weekly Maintenance" "Run Deep Clean" "$PREV_NID" 2>/dev/null)"
+    [ -n "$_RESULT" ] || _RESULT="unsupported:0"
+    ACTION="${_RESULT%%:*}"
+    PREV_NID="${_RESULT##*:}"
 
-if [ "$ACTION" = "unsupported" ]; then
-    mkdir -p "$CONFIG_DIR"
-    printf '%s\n' "disabled" > "$NOTIFY_ACTIONS_MODE_FILE"
-    notify-send "$TITLE" "$BODY" --icon=computer --app-name="Weekly Maintenance"
-    fallback_prompt_and_maybe_run "$TARGET"
-    exit 0
-fi
-
-# "launched" = user clicked run/choose one or more times; terminals are already open
-if [ "$ACTION" = "launched" ]; then
-    exit 0
-fi
-
-# "none" = notification dismissed without any action
-if [ "$ACTION" = "none" ]; then
-    fallback_prompt_and_maybe_run "$TARGET"
-fi
+    case "$ACTION" in
+        run)
+            # Launch script in background; loop immediately re-sends notification
+            "$HELPER" "$TARGET" &
+            ;;
+        choose)
+            # Block until user picks (or cancels) terminal, then launch
+            if "$HELPER" --choose-terminal >/dev/null 2>&1; then
+                "$HELPER" "$TARGET" &
+            fi
+            ;;
+        unsupported)
+            mkdir -p "$CONFIG_DIR"
+            printf '%s\n' "disabled" > "$NOTIFY_ACTIONS_MODE_FILE"
+            notify-send "$TITLE" "$BODY" --icon=computer --app-name="Weekly Maintenance"
+            fallback_prompt_and_maybe_run "$TARGET"
+            break
+            ;;
+        *)
+            # dismissed or timeout — user is done
+            break
+            ;;
+    esac
+done
