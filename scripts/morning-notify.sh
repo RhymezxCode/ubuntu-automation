@@ -348,6 +348,18 @@ PYEOF
 
 HELPER="$HOME/.local/bin/ubuntu-automation-launch-in-terminal.sh"
 TARGET="$HOME/daily-startup.sh"
+_PIDFILE="/tmp/morning-notify.pid"
+
+# Single-instance enforcement: kill any previous run before starting
+if [ -f "$_PIDFILE" ]; then
+    _OLD_PID=$(cat "$_PIDFILE" 2>/dev/null)
+    if [ -n "$_OLD_PID" ] && kill -0 "$_OLD_PID" 2>/dev/null; then
+        kill "$_OLD_PID" 2>/dev/null
+        sleep 0.3
+    fi
+fi
+echo $$ > "$_PIDFILE"
+trap 'rm -f "$_PIDFILE"' EXIT
 
 hydrate_gui_env
 PREV_NID=0
@@ -369,7 +381,20 @@ while true; do
             fi
             ;;
         snooze)
-            # Re-fire this notification after 1 hour
+            # Close original notification via a fresh D-Bus call (more reliable than inside GLib loop)
+            python3 -c "
+import dbus, sys
+try:
+    bus = dbus.SessionBus()
+    iface = dbus.Interface(bus.get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+    iface.CloseNotification(dbus.UInt32(int('$PREV_NID')))
+except: pass
+" 2>/dev/null || true
+            _SNOOZE_AT=$(date -d '+1 hour' '+%I:%M %p' 2>/dev/null || echo "in 1 hour")
+            notify-send "⏰ Snoozed for 1 hour" \
+                "Morning reminder will re-appear at ${_SNOOZE_AT}" \
+                --icon=appointment-soon --app-name="Daily Maintenance" \
+                --expire-time=5000 2>/dev/null || true
             ( sleep 3600 && bash "$0" ) &
             break
             ;;
